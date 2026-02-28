@@ -8,6 +8,12 @@ Go monolith for raw session ingestion, sync, and deterministic analytics.
 docker compose up --build
 ```
 
+Apply migrations:
+
+```bash
+docker compose run --rm migrate
+```
+
 ## Local env
 
 - `DATABASE_URL` (default `postgres://baseline:baseline@localhost:5432/baseline?sslmode=disable`)
@@ -20,3 +26,9 @@ docker compose up --build
 SQL files live under `migrations/`:
 - `001_raw_tables.*.sql`
 - `002_projection_tables.*.sql`
+
+Runner:
+
+```bash
+go run ./cmd/migrate
+```

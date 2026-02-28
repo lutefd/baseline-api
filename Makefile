@@ -1,4 +1,4 @@
-.PHONY: run test tidy
+.PHONY: run test tidy migrate
 
 run:
 	go run ./cmd/api
@@ -8,3 +8,6 @@ test:
 
 tidy:
 	go mod tidy
+
+migrate:
+	go run ./cmd/migrate

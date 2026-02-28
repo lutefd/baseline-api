@@ -29,5 +29,17 @@ services:
       postgres:
         condition: service_healthy
 
+  migrate:
+    image: golang:1.24
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    command: ["go", "run", "./cmd/migrate"]
+    environment:
+      DATABASE_URL: postgres://baseline:baseline@postgres:5432/baseline?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:
