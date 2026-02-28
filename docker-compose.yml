@@ -1,14 +1,19 @@
 services:
   postgres:
     image: postgres:17
+    container_name: baseline-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: baseline
       POSTGRES_PASSWORD: baseline
       POSTGRES_DB: baseline
+      TZ: America/Sao_Paulo
     ports:
-      - "5432:5432"
+      - "55439:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - caddy_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U baseline -d baseline"]
       interval: 5s
@@ -18,13 +23,18 @@ services:
   api:
     build:
       context: .
+    container_name: baseline-api
+    restart: unless-stopped
     environment:
-      PORT: "8080"
+      PORT: "38180"
       DATABASE_URL: postgres://baseline:baseline@postgres:5432/baseline?sslmode=disable
       API_TOKEN: baseline-dev-token
       DEFAULT_USER_ID: 00000000-0000-0000-0000-000000000001
+      TZ: America/Sao_Paulo
     ports:
-      - "8080:8080"
+      - "38180:38180"
+    networks:
+      - caddy_net
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,15 +43,23 @@ services:
 
   migrate:
     image: golang:1.24
+    container_name: baseline-migrate
     working_dir: /workspace
     volumes:
       - ./:/workspace
     command: ["go", "run", "./cmd/migrate"]
     environment:
       DATABASE_URL: postgres://baseline:baseline@postgres:5432/baseline?sslmode=disable
+      TZ: America/Sao_Paulo
+    networks:
+      - caddy_net
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
   pgdata:
+
+networks:
+  caddy_net:
+    external: true

@@ -9,6 +9,9 @@ docker compose up --build
 ```
 
 `api` waits for `migrate`, so schema is applied before the server starts.
+Published ports:
+- API: `38180`
+- Postgres: `55439`
 
 Run only migrations:
 
