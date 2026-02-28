@@ -8,7 +8,9 @@ Go monolith for raw session ingestion, sync, and deterministic analytics.
 docker compose up --build
 ```
 
-Apply migrations:
+`api` waits for `migrate`, so schema is applied before the server starts.
+
+Run only migrations:
 
 ```bash
 docker compose run --rm migrate

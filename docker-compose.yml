@@ -28,6 +28,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   migrate:
     image: golang:1.24
