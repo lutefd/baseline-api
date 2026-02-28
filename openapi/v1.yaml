@@ -5,7 +5,7 @@ info:
   description: |
     Baseline backend API for session sync and analytics.
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:38180
 security:
   - bearerAuth: []
 
@@ -249,6 +249,36 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CorrelationsResponse'
+
+  /v1/analysis/deep:
+    get:
+      tags: [analysis]
+      summary: Deep behavioral insights and advanced trends
+      description: Competitive metrics treat sessionType `match` and `friendly` as match-equivalent.
+      parameters:
+        - in: query
+          name: granularity
+          schema:
+            type: string
+            enum: [week, month]
+            default: week
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Deep analysis payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeepAnalysisResponse'
 
 components:
   securitySchemes:
@@ -571,3 +601,169 @@ components:
           type: number
           format: double
           nullable: true
+
+    InsightMetric:
+      type: object
+      properties:
+        sessions:
+          type: integer
+        matches:
+          type: integer
+        avgRushingIndex:
+          type: number
+          format: double
+        avgComposure:
+          type: number
+          format: double
+        winRate:
+          type: number
+          format: double
+
+    BehaviorDrift:
+      type: object
+      properties:
+        class:
+          $ref: '#/components/schemas/InsightMetric'
+        match:
+          $ref: '#/components/schemas/InsightMetric'
+        deltaRushingIndex:
+          type: number
+          format: double
+        deltaComposure:
+          type: number
+          format: double
+
+    ScalarTrendPoint:
+      type: object
+      properties:
+        bucketStartDate:
+          type: string
+          format: date-time
+        value:
+          type: number
+          format: double
+        sessions:
+          type: integer
+
+    SetDifferentialTrendPoint:
+      type: object
+      properties:
+        bucketStartDate:
+          type: string
+          format: date-time
+        avgSetDifferential:
+          type: number
+          format: double
+        matches:
+          type: integer
+
+    OpponentBehavioralShift:
+      type: object
+      properties:
+        opponentId:
+          type: string
+          format: uuid
+        opponentName:
+          type: string
+        matches:
+          type: integer
+        avgRushingIndex:
+          type: number
+          format: double
+        avgComposure:
+          type: number
+          format: double
+        avgSetDifferential:
+          type: number
+          format: double
+        rushingSlope:
+          type: number
+          format: double
+        composureSlope:
+          type: number
+          format: double
+
+    WeeklyVolatilityPoint:
+      type: object
+      properties:
+        weekStartDate:
+          type: string
+          format: date-time
+        composureStdDev:
+          type: number
+          format: double
+        rushingStdDev:
+          type: number
+          format: double
+        sessions:
+          type: integer
+
+    ClutchIndicator:
+      type: object
+      properties:
+        clutchMatches:
+          type: integer
+        clutchMatchesWithResult:
+          type: integer
+        winRate:
+          type: number
+          format: double
+
+    FatigueSignal:
+      type: object
+      properties:
+        adjacentDayPairs:
+          type: integer
+        avgNextDayRushingDelta:
+          type: number
+          format: double
+        avgNextDayComposureDelta:
+          type: number
+          format: double
+        weekendPairs:
+          type: integer
+        saturdayToSundayRushing:
+          type: number
+          format: double
+          nullable: true
+
+    DeepAnalysisResponse:
+      type: object
+      properties:
+        granularity:
+          type: string
+          enum: [week, month]
+        matchVsClassBehavioralDrift:
+          $ref: '#/components/schemas/BehaviorDrift'
+        composureThresholdAnalysis:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/InsightMetric'
+        focusAdherenceImpact:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/InsightMetric'
+        rallyDensityTrend:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScalarTrendPoint'
+        directionChangesTrend:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScalarTrendPoint'
+        setDifferentialTrend:
+          type: array
+          items:
+            $ref: '#/components/schemas/SetDifferentialTrendPoint'
+        opponentBehavioralShift:
+          type: array
+          items:
+            $ref: '#/components/schemas/OpponentBehavioralShift'
+        weeklyVolatility:
+          type: array
+          items:
+            $ref: '#/components/schemas/WeeklyVolatilityPoint'
+        clutchIndicator:
+          $ref: '#/components/schemas/ClutchIndicator'
+        fatigueSignal:
+          $ref: '#/components/schemas/FatigueSignal'
