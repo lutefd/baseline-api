@@ -142,6 +142,38 @@ func (s *Store) ListSessionsByDateRange(ctx context.Context, userID uuid.UUID, f
 	return items, rows.Err()
 }
 
+func (s *Store) ListMatchSessionsByOpponent(ctx context.Context, userID, opponentID uuid.UUID) ([]sessions.Session, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, user_id, opponent_id, session_name, session_type, date, duration_minutes,
+		       rushed_shots, unforced_errors, long_rallies, direction_changes, composure,
+		       focus_text, followed_focus, is_match_win, notes, created_at, updated_at, deleted_at
+		FROM sessions
+		WHERE user_id = $1
+		  AND opponent_id = $2
+		  AND session_type = 'match'
+		  AND deleted_at IS NULL
+		ORDER BY date DESC
+	`, userID, opponentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]sessions.Session, 0)
+	for rows.Next() {
+		var v sessions.Session
+		if err := rows.Scan(
+			&v.ID, &v.UserID, &v.OpponentID, &v.SessionName, &v.SessionType, &v.Date, &v.DurationMinutes,
+			&v.RushedShots, &v.UnforcedErrors, &v.LongRallies, &v.DirectionChanges, &v.Composure,
+			&v.FocusText, &v.FollowedFocus, &v.IsMatchWin, &v.Notes, &v.CreatedAt, &v.UpdatedAt, &v.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, v)
+	}
+	return items, rows.Err()
+}
+
 func (s *Store) CreateOpponent(ctx context.Context, v opponents.Opponent) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO opponents (id, user_id, name, dominant_hand, play_style, notes, created_at, updated_at, deleted_at)

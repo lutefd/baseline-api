@@ -288,6 +288,11 @@ func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleOpponentAnalysis(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	prefix := "/v1/analysis/opponents/"
 	if !strings.HasPrefix(r.URL.Path, prefix) {
 		http.NotFound(w, r)
@@ -297,6 +302,20 @@ func (s *Server) handleOpponentAnalysis(w http.ResponseWriter, r *http.Request) 
 	opponentID, err := uuid.Parse(rawID)
 	if err != nil {
 		http.Error(w, "invalid opponent id", http.StatusBadRequest)
+		return
+	}
+	matchSessions, err := s.store.ListMatchSessionsByOpponent(r.Context(), userID, opponentID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sessionIDs := make([]uuid.UUID, 0, len(matchSessions))
+	for _, item := range matchSessions {
+		sessionIDs = append(sessionIDs, item.ID)
+	}
+	setsBySession, err := s.store.ListMatchSetsBySessionIDs(r.Context(), sessionIDs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	statsRow, err := s.store.GetOpponentStats(r.Context(), opponentID)
@@ -310,7 +329,7 @@ func (s *Server) handleOpponentAnalysis(w http.ResponseWriter, r *http.Request) 
 		"avgComposure":       statsRow.AvgComposure,
 		"avgRushingIndex":    statsRow.AvgRushingIndex,
 		"avgSetDifferential": statsRow.AvgSetDifferential,
-		"matchHistory":       []any{},
+		"matchHistory":       buildMatchHistory(matchSessions, setsBySession),
 	})
 }
 
@@ -451,4 +470,32 @@ func bucketStart(t time.Time, granularity string) time.Time {
 		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
 	}
 	return domainstats.WeekStart(t)
+}
+
+type matchHistoryRow struct {
+	SessionID       uuid.UUID `json:"sessionId"`
+	Date            time.Time `json:"date"`
+	SessionName     string    `json:"sessionName"`
+	IsMatchWin      *bool     `json:"isMatchWin,omitempty"`
+	SetDifferential int       `json:"setDifferential"`
+	Composure       int       `json:"composure"`
+	RushingIndex    float64   `json:"rushingIndex"`
+	Notes           *string   `json:"notes,omitempty"`
+}
+
+func buildMatchHistory(matchSessions []sessions.Session, setsBySession map[uuid.UUID][]sessions.MatchSet) []matchHistoryRow {
+	rows := make([]matchHistoryRow, 0, len(matchSessions))
+	for _, item := range matchSessions {
+		rows = append(rows, matchHistoryRow{
+			SessionID:       item.ID,
+			Date:            item.Date,
+			SessionName:     item.SessionName,
+			IsMatchWin:      item.IsMatchWin,
+			SetDifferential: domainstats.SetDifferential(setsBySession[item.ID]),
+			Composure:       item.Composure,
+			RushingIndex:    domainstats.Round(domainstats.RushingIndex(item)),
+			Notes:           item.Notes,
+		})
+	}
+	return rows
 }
