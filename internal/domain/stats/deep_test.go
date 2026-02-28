@@ -60,14 +60,30 @@ func TestBuildDeepInsights(t *testing.T) {
 		Composure:        6,
 		FollowedFocus:    &partial,
 	}
+	s4 := sessions.Session{
+		ID:               uuid.New(),
+		UserID:           userID,
+		OpponentID:       &opponentID,
+		SessionType:      "friendly",
+		Date:             time.Date(2026, 2, 16, 9, 0, 0, 0, time.UTC),
+		DurationMinutes:  45,
+		RushedShots:      7,
+		UnforcedErrors:   5,
+		LongRallies:      16,
+		DirectionChanges: 9,
+		Composure:        7,
+		FollowedFocus:    &yes,
+		IsMatchWin:       &win,
+	}
 
-	insights := BuildDeepInsights([]sessions.Session{s1, s2, s3}, map[uuid.UUID][]sessions.MatchSet{
+	insights := BuildDeepInsights([]sessions.Session{s1, s2, s3, s4}, map[uuid.UUID][]sessions.MatchSet{
 		s1.ID: {{SessionID: s1.ID, PlayerGames: 6, OpponentGames: 4}},
 		s2.ID: {{SessionID: s2.ID, PlayerGames: 4, OpponentGames: 6}},
+		s4.ID: {{SessionID: s4.ID, PlayerGames: 6, OpponentGames: 3}},
 	}, map[uuid.UUID]string{opponentID: "Rival"}, "week")
 
-	if insights.MatchVsClassBehavioralDrift.Match.Sessions != 2 {
-		t.Fatalf("expected 2 match sessions")
+	if insights.MatchVsClassBehavioralDrift.Match.Sessions != 3 {
+		t.Fatalf("expected 3 competitive sessions")
 	}
 	if insights.MatchVsClassBehavioralDrift.Class.Sessions != 1 {
 		t.Fatalf("expected 1 class session")
@@ -75,8 +91,8 @@ func TestBuildDeepInsights(t *testing.T) {
 	if insights.ComposureThresholdAnalysis["low"].Sessions != 1 {
 		t.Fatalf("expected low composure bucket to have 1 session")
 	}
-	if insights.FocusAdherenceImpact["yes"].Sessions != 1 {
-		t.Fatalf("expected followedFocus yes bucket to have 1 session")
+	if insights.FocusAdherenceImpact["yes"].Sessions != 2 {
+		t.Fatalf("expected followedFocus yes bucket to have 2 sessions")
 	}
 	if len(insights.SetDifferentialTrend) == 0 {
 		t.Fatalf("expected set differential trend")

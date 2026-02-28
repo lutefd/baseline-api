@@ -150,7 +150,7 @@ func (s *Store) ListMatchSessionsByOpponent(ctx context.Context, userID, opponen
 		FROM sessions
 		WHERE user_id = $1
 		  AND opponent_id = $2
-		  AND session_type = 'match'
+		  AND session_type IN ('match', 'friendly')
 		  AND deleted_at IS NULL
 		ORDER BY date DESC
 	`, userID, opponentID)

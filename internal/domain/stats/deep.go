@@ -88,7 +88,7 @@ func BuildDeepInsights(items []sessions.Session, setsBySession map[uuid.UUID][]s
 	}
 
 	classSessions := filterByType(items, "class")
-	matchSessions := filterByType(items, "match")
+	matchSessions := filterCompetitive(items)
 
 	classMetric := buildInsightMetric(classSessions)
 	matchMetric := buildInsightMetric(matchSessions)
@@ -145,6 +145,16 @@ func filterByType(items []sessions.Session, sessionType string) []sessions.Sessi
 	out := make([]sessions.Session, 0)
 	for _, item := range items {
 		if item.SessionType == sessionType {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterCompetitive(items []sessions.Session) []sessions.Session {
+	out := make([]sessions.Session, 0)
+	for _, item := range items {
+		if item.IsMatch() {
 			out = append(out, item)
 		}
 	}
@@ -230,11 +240,15 @@ func setDifferentialTrend(matchSessions []sessions.Session, setsBySession map[uu
 	}
 	acc := map[time.Time]*bucket{}
 	for _, item := range matchSessions {
+		sets := setsBySession[item.ID]
+		if !hasNonDeletedSets(sets) {
+			continue
+		}
 		key := trendBucketStart(item.Date, granularity)
 		if _, ok := acc[key]; !ok {
 			acc[key] = &bucket{}
 		}
-		acc[key].totalDiff += SetDifferential(setsBySession[item.ID])
+		acc[key].totalDiff += SetDifferential(sets)
 		acc[key].matches++
 	}
 
@@ -331,6 +345,10 @@ func clutchIndicator(matchSessions []sessions.Session, setsBySession map[uuid.UU
 	withResult := 0
 	wins := 0
 	for _, item := range matchSessions {
+		sets := setsBySession[item.ID]
+		if !hasNonDeletedSets(sets) {
+			continue
+		}
 		diff := SetDifferential(setsBySession[item.ID])
 		if math.Abs(float64(diff)) > 2 {
 			continue
@@ -352,6 +370,15 @@ func clutchIndicator(matchSessions []sessions.Session, setsBySession map[uuid.UU
 		ClutchMatchesWithResult: withResult,
 		WinRate:                 winRate,
 	}
+}
+
+func hasNonDeletedSets(sets []sessions.MatchSet) bool {
+	for _, set := range sets {
+		if set.DeletedAt == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func fatigueSignal(items []sessions.Session) FatigueSignal {

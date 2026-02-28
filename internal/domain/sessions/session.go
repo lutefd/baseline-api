@@ -44,5 +44,5 @@ func (s Session) IsDeleted() bool {
 }
 
 func (s Session) IsMatch() bool {
-	return s.SessionType == "match"
+	return s.SessionType == "match" || s.SessionType == "friendly"
 }
