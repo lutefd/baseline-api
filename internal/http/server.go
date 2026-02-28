@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/lutefd/baseline-api/internal/auth"
 	"github.com/lutefd/baseline-api/internal/domain/opponents"
 	"github.com/lutefd/baseline-api/internal/domain/sessions"
+	domainstats "github.com/lutefd/baseline-api/internal/domain/stats"
 	domainsync "github.com/lutefd/baseline-api/internal/domain/sync"
 	"github.com/lutefd/baseline-api/internal/projections"
 	"github.com/lutefd/baseline-api/internal/storage/postgres"
@@ -313,18 +315,53 @@ func (s *Server) handleOpponentAnalysis(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleTrends(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	from, to, err := parseDateRange(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	items, err := s.store.ListSessionsByDateRange(r.Context(), userID, from, to)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	granularity := r.URL.Query().Get("granularity")
+	if granularity == "" {
+		granularity = "week"
+	}
+	series := aggregateTrends(items, granularity)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"granularity": r.URL.Query().Get("granularity"),
-		"series":      []any{},
+		"granularity": granularity,
+		"series":      series,
 	})
 }
 
-func (s *Server) handleCorrelations(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleCorrelations(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	from, to, err := parseDateRange(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	items, err := s.store.ListSessionsByDateRange(r.Context(), userID, from, to)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"composureVsWin":         nil,
-		"rushingVsWin":           nil,
-		"followedFocusVsRushing": nil,
-		"longRalliesVsWin":       nil,
+		"composureVsWin":         domainstats.CorrelationComposureVsWin(items),
+		"rushingVsWin":           domainstats.CorrelationRushingVsWin(items),
+		"followedFocusVsRushing": domainstats.CorrelationFollowedFocusVsRushing(items),
+		"longRalliesVsWin":       domainstats.CorrelationLongRalliesVsWin(items),
 	})
 }
 
@@ -349,4 +386,69 @@ func loggingMiddleware(next http.Handler) http.Handler {
 
 func userIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	return auth.UserIDFromContext(ctx)
+}
+
+func parseDateRange(r *http.Request) (*time.Time, *time.Time, error) {
+	var from, to *time.Time
+	if raw := r.URL.Query().Get("from"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, nil, err
+		}
+		from = &parsed
+	}
+	if raw := r.URL.Query().Get("to"); raw != "" {
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, nil, err
+		}
+		to = &parsed
+	}
+	return from, to, nil
+}
+
+func aggregateTrends(items []sessions.Session, granularity string) []map[string]any {
+	type bucket struct {
+		sessions []sessions.Session
+		matches  []sessions.Session
+	}
+	buckets := make(map[time.Time]*bucket)
+	for _, item := range items {
+		key := bucketStart(item.Date, granularity)
+		if _, ok := buckets[key]; !ok {
+			buckets[key] = &bucket{}
+		}
+		buckets[key].sessions = append(buckets[key].sessions, item)
+		if item.IsMatch() {
+			buckets[key].matches = append(buckets[key].matches, item)
+		}
+	}
+
+	keys := make([]time.Time, 0, len(buckets))
+	for k := range buckets {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i].Before(keys[j]) })
+
+	out := make([]map[string]any, 0, len(keys))
+	for _, key := range keys {
+		b := buckets[key]
+		out = append(out, map[string]any{
+			"bucketStartDate":  key,
+			"avgComposure":     domainstats.Round(domainstats.AverageComposure(b.sessions)),
+			"avgRushingIndex":  domainstats.Round(domainstats.AverageRushingIndex(b.sessions)),
+			"winRate":          domainstats.Round(domainstats.WinRate(b.matches)),
+			"matchesPlayed":    len(b.matches),
+			"totalSessionRows": len(b.sessions),
+		})
+	}
+	return out
+}
+
+func bucketStart(t time.Time, granularity string) time.Time {
+	t = t.UTC()
+	if granularity == "month" {
+		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+	}
+	return domainstats.WeekStart(t)
 }
