@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS match_sets;
+DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS opponents;
+DROP TABLE IF EXISTS users;
