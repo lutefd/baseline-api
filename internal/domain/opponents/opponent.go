@@ -8,6 +8,7 @@ import (
 
 type Opponent struct {
 	ID           uuid.UUID  `json:"id"`
+	IdentityKey  string     `json:"identityKey"`
 	UserID       uuid.UUID  `json:"userId"`
 	Name         string     `json:"name"`
 	DominantHand *string    `json:"dominantHand,omitempty"`

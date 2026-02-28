@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -175,16 +176,17 @@ func (s *Store) ListMatchSessionsByOpponent(ctx context.Context, userID, opponen
 }
 
 func (s *Store) CreateOpponent(ctx context.Context, v opponents.Opponent) error {
+	v = withIdentityKey(v)
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO opponents (id, user_id, name, dominant_hand, play_style, notes, created_at, updated_at, deleted_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-	`, v.ID, v.UserID, v.Name, v.DominantHand, v.PlayStyle, v.Notes, v.CreatedAt, v.UpdatedAt, v.DeletedAt)
+		INSERT INTO opponents (id, identity_key, user_id, name, dominant_hand, play_style, notes, created_at, updated_at, deleted_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+	`, v.ID, v.IdentityKey, v.UserID, v.Name, v.DominantHand, v.PlayStyle, v.Notes, v.CreatedAt, v.UpdatedAt, v.DeletedAt)
 	return err
 }
 
 func (s *Store) ListOpponentsByUser(ctx context.Context, userID uuid.UUID, includeDeleted bool) ([]opponents.Opponent, error) {
 	query := `
-		SELECT id, user_id, name, dominant_hand, play_style, notes, created_at, updated_at, deleted_at
+		SELECT id, identity_key, user_id, name, dominant_hand, play_style, notes, created_at, updated_at, deleted_at
 		FROM opponents WHERE user_id = $1`
 	if !includeDeleted {
 		query += ` AND deleted_at IS NULL`
@@ -200,7 +202,7 @@ func (s *Store) ListOpponentsByUser(ctx context.Context, userID uuid.UUID, inclu
 	items := make([]opponents.Opponent, 0)
 	for rows.Next() {
 		var v opponents.Opponent
-		if err := rows.Scan(&v.ID, &v.UserID, &v.Name, &v.DominantHand, &v.PlayStyle, &v.Notes, &v.CreatedAt, &v.UpdatedAt, &v.DeletedAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.IdentityKey, &v.UserID, &v.Name, &v.DominantHand, &v.PlayStyle, &v.Notes, &v.CreatedAt, &v.UpdatedAt, &v.DeletedAt); err != nil {
 			return nil, err
 		}
 		items = append(items, v)
@@ -258,6 +260,7 @@ func (s *Store) UpsertSessionByUpdatedAt(ctx context.Context, incoming sessions.
 }
 
 func (s *Store) UpsertOpponentByUpdatedAt(ctx context.Context, incoming opponents.Opponent) (sync.MergeDecision, error) {
+	incoming = withIdentityKey(incoming)
 	var storedUpdatedAt time.Time
 	var storedDeletedAt *time.Time
 	err := s.pool.QueryRow(ctx, `SELECT updated_at, deleted_at FROM opponents WHERE id = $1`, incoming.ID).Scan(&storedUpdatedAt, &storedDeletedAt)
@@ -279,15 +282,16 @@ func (s *Store) UpsertOpponentByUpdatedAt(ctx context.Context, incoming opponent
 	_, err = s.pool.Exec(ctx, `
 		UPDATE opponents SET
 			user_id = $2,
-			name = $3,
-			dominant_hand = $4,
-			play_style = $5,
-			notes = $6,
-			created_at = $7,
-			updated_at = $8,
-			deleted_at = $9
+			identity_key = $3,
+			name = $4,
+			dominant_hand = $5,
+			play_style = $6,
+			notes = $7,
+			created_at = $8,
+			updated_at = $9,
+			deleted_at = $10
 		WHERE id = $1
-	`, incoming.ID, incoming.UserID, incoming.Name, incoming.DominantHand, incoming.PlayStyle, incoming.Notes,
+	`, incoming.ID, incoming.UserID, incoming.IdentityKey, incoming.Name, incoming.DominantHand, incoming.PlayStyle, incoming.Notes,
 		incoming.CreatedAt, incoming.UpdatedAt, incoming.DeletedAt)
 	return decision, err
 }
@@ -376,7 +380,7 @@ func (s *Store) PullChanges(ctx context.Context, userID uuid.UUID, updatedAfter 
 	}
 
 	opponentRows, err := s.pool.Query(ctx, `
-		SELECT id, user_id, name, dominant_hand, play_style, notes, created_at, updated_at, deleted_at
+		SELECT id, identity_key, user_id, name, dominant_hand, play_style, notes, created_at, updated_at, deleted_at
 		FROM opponents
 		WHERE user_id = $1 AND updated_at > $2
 		ORDER BY updated_at ASC
@@ -389,7 +393,7 @@ func (s *Store) PullChanges(ctx context.Context, userID uuid.UUID, updatedAfter 
 	opponentItems := make([]opponents.Opponent, 0)
 	for opponentRows.Next() {
 		var v opponents.Opponent
-		if err := opponentRows.Scan(&v.ID, &v.UserID, &v.Name, &v.DominantHand, &v.PlayStyle, &v.Notes, &v.CreatedAt, &v.UpdatedAt, &v.DeletedAt); err != nil {
+		if err := opponentRows.Scan(&v.ID, &v.IdentityKey, &v.UserID, &v.Name, &v.DominantHand, &v.PlayStyle, &v.Notes, &v.CreatedAt, &v.UpdatedAt, &v.DeletedAt); err != nil {
 			return nil, nil, nil, err
 		}
 		opponentItems = append(opponentItems, v)
@@ -519,4 +523,11 @@ func (s *Store) GetOpponentStats(ctx context.Context, opponentID uuid.UUID) (sta
 		return stats.OpponentStats{}, err
 	}
 	return out, nil
+}
+
+func withIdentityKey(in opponents.Opponent) opponents.Opponent {
+	if strings.TrimSpace(in.IdentityKey) == "" {
+		in.IdentityKey = in.ID.String()
+	}
+	return in
 }

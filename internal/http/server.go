@@ -139,6 +139,9 @@ func (s *Server) handleCreateOpponent(w http.ResponseWriter, r *http.Request) {
 	if payload.ID == uuid.Nil {
 		payload.ID = uuid.New()
 	}
+	if strings.TrimSpace(payload.IdentityKey) == "" {
+		payload.IdentityKey = payload.ID.String()
+	}
 	now := time.Now().UTC()
 	payload.UserID = userID
 	if payload.CreatedAt.IsZero() {
