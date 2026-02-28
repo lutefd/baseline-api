@@ -54,6 +54,7 @@ func (s *Server) Router() http.Handler {
 	mux.HandleFunc("GET /v1/analysis/overview", s.handleOverview)
 	mux.HandleFunc("GET /v1/analysis/trends", s.handleTrends)
 	mux.HandleFunc("GET /v1/analysis/correlations", s.handleCorrelations)
+	mux.HandleFunc("GET /v1/analysis/deep", s.handleDeepAnalysis)
 	mux.HandleFunc("GET /v1/analysis/opponents/", s.handleOpponentAnalysis)
 
 	return s.auth.Guard(loggingMiddleware(mux))
@@ -382,6 +383,49 @@ func (s *Server) handleCorrelations(w http.ResponseWriter, r *http.Request) {
 		"followedFocusVsRushing": domainstats.CorrelationFollowedFocusVsRushing(items),
 		"longRalliesVsWin":       domainstats.CorrelationLongRalliesVsWin(items),
 	})
+}
+
+func (s *Server) handleDeepAnalysis(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	from, to, err := parseDateRange(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	granularity := r.URL.Query().Get("granularity")
+	if granularity == "" {
+		granularity = "week"
+	}
+
+	items, err := s.store.ListSessionsByDateRange(r.Context(), userID, from, to)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	sessionIDs := make([]uuid.UUID, 0, len(items))
+	for _, item := range items {
+		sessionIDs = append(sessionIDs, item.ID)
+	}
+	setsBySession, err := s.store.ListMatchSetsBySessionIDs(r.Context(), sessionIDs)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	opponentItems, err := s.store.ListOpponentsByUser(r.Context(), userID, false)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	opponentNames := make(map[uuid.UUID]string, len(opponentItems))
+	for _, item := range opponentItems {
+		opponentNames[item.ID] = item.Name
+	}
+
+	writeJSON(w, http.StatusOK, domainstats.BuildDeepInsights(items, setsBySession, opponentNames, granularity))
 }
 
 func applyCounts(c *domainsync.EntityCounts, d domainsync.MergeDecision) {
