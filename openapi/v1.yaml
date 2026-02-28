@@ -397,6 +397,9 @@ components:
         id:
           type: string
           format: uuid
+        identityKey:
+          type: string
+          description: Stable logical identity for opponent; defaults to id when omitted.
         userId:
           type: string
           format: uuid
