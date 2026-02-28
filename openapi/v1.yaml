@@ -1,0 +1,573 @@
+openapi: 3.0.3
+info:
+  title: Baseline API
+  version: v1
+  description: |
+    Baseline backend API for session sync and analytics.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+
+tags:
+  - name: health
+  - name: sessions
+  - name: opponents
+  - name: sync
+  - name: stats
+  - name: analysis
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /v1/sessions:
+    get:
+      tags: [sessions]
+      summary: List sessions
+      parameters:
+        - in: query
+          name: includeDeleted
+          schema:
+            type: boolean
+            default: false
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Session list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Session'
+    post:
+      tags: [sessions]
+      summary: Create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Session'
+      responses:
+        '201':
+          description: Created session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+
+  /v1/opponents:
+    get:
+      tags: [opponents]
+      summary: List opponents
+      parameters:
+        - in: query
+          name: includeDeleted
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Opponent list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  opponents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Opponent'
+    post:
+      tags: [opponents]
+      summary: Create opponent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Opponent'
+      responses:
+        '201':
+          description: Created opponent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Opponent'
+
+  /v1/sync/push:
+    post:
+      tags: [sync]
+      summary: Push local changes (LWW by updatedAt)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequest'
+      responses:
+        '200':
+          description: Merge result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPushResponse'
+
+  /v1/sync/pull:
+    get:
+      tags: [sync]
+      summary: Pull incremental changes
+      parameters:
+        - in: query
+          name: updatedAfter
+          required: true
+          description: RFC3339 timestamp
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Changed entities including tombstones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPullResponse'
+
+  /v1/stats/overview:
+    get:
+      tags: [stats]
+      summary: Overview stats
+      responses:
+        '200':
+          description: Overview metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewResponse'
+
+  /v1/analysis/overview:
+    get:
+      tags: [analysis]
+      summary: Overview analysis
+      responses:
+        '200':
+          description: Overview metrics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewResponse'
+
+  /v1/analysis/opponents/{id}:
+    get:
+      tags: [analysis]
+      summary: Opponent analysis with match history
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Opponent analytics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpponentAnalysisResponse'
+
+  /v1/analysis/trends:
+    get:
+      tags: [analysis]
+      summary: Bucketed trends
+      parameters:
+        - in: query
+          name: granularity
+          schema:
+            type: string
+            enum: [week, month]
+            default: week
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Trend buckets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendsResponse'
+
+  /v1/analysis/correlations:
+    get:
+      tags: [analysis]
+      summary: Correlation metrics
+      parameters:
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Correlations (nullable when insufficient samples)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CorrelationsResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token
+
+  schemas:
+    Session:
+      type: object
+      required:
+        - sessionName
+        - sessionType
+        - date
+        - durationMinutes
+        - rushedShots
+        - unforcedErrors
+        - longRallies
+        - directionChanges
+        - composure
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          readOnly: true
+        opponentId:
+          type: string
+          format: uuid
+          nullable: true
+        sessionName:
+          type: string
+        sessionType:
+          type: string
+          enum: [class, friendly, match]
+        date:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+          minimum: 1
+        rushedShots:
+          type: integer
+        unforcedErrors:
+          type: integer
+        longRallies:
+          type: integer
+        directionChanges:
+          type: integer
+        composure:
+          type: integer
+          minimum: 1
+          maximum: 10
+        focusText:
+          type: string
+          nullable: true
+        followedFocus:
+          type: string
+          enum: [yes, partial, no]
+          nullable: true
+        isMatchWin:
+          type: boolean
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    MatchSet:
+      type: object
+      required:
+        - sessionId
+        - setNumber
+        - playerGames
+        - opponentGames
+      properties:
+        id:
+          type: string
+          format: uuid
+        sessionId:
+          type: string
+          format: uuid
+        setNumber:
+          type: integer
+        playerGames:
+          type: integer
+        opponentGames:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Opponent:
+      type: object
+      required: [name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        userId:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+        dominantHand:
+          type: string
+          enum: [left, right, unknown]
+          nullable: true
+        playStyle:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SyncPushRequest:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        matchSets:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchSet'
+        opponents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Opponent'
+
+    EntityCounts:
+      type: object
+      properties:
+        inserted:
+          type: integer
+        updated:
+          type: integer
+        ignored:
+          type: integer
+
+    SyncPushResponse:
+      type: object
+      properties:
+        sessions:
+          $ref: '#/components/schemas/EntityCounts'
+        matchSets:
+          $ref: '#/components/schemas/EntityCounts'
+        opponents:
+          $ref: '#/components/schemas/EntityCounts'
+        serverTimestamp:
+          type: string
+          format: date-time
+
+    SyncPullResponse:
+      type: object
+      properties:
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+        matchSets:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchSet'
+        opponents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Opponent'
+
+    OverviewResponse:
+      type: object
+      properties:
+        winRate:
+          type: number
+          format: double
+        avgComposure:
+          type: number
+          format: double
+        avgRushingIndex:
+          type: number
+          format: double
+        improvementSlopeComposure:
+          type: number
+          format: double
+        improvementSlopeRushing:
+          type: number
+          format: double
+        totalMatches:
+          type: integer
+        recentSessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Session'
+
+    MatchHistoryItem:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date-time
+        sessionName:
+          type: string
+        isMatchWin:
+          type: boolean
+          nullable: true
+        setDifferential:
+          type: integer
+        composure:
+          type: integer
+        rushingIndex:
+          type: number
+          format: double
+        notes:
+          type: string
+          nullable: true
+
+    OpponentAnalysisResponse:
+      type: object
+      properties:
+        matchesPlayed:
+          type: integer
+        winRate:
+          type: number
+          format: double
+        avgComposure:
+          type: number
+          format: double
+        avgRushingIndex:
+          type: number
+          format: double
+        avgSetDifferential:
+          type: number
+          format: double
+        matchHistory:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchHistoryItem'
+
+    TrendBucket:
+      type: object
+      properties:
+        bucketStartDate:
+          type: string
+          format: date-time
+        avgComposure:
+          type: number
+          format: double
+        avgRushingIndex:
+          type: number
+          format: double
+        winRate:
+          type: number
+          format: double
+        matchesPlayed:
+          type: integer
+        totalSessionRows:
+          type: integer
+
+    TrendsResponse:
+      type: object
+      properties:
+        granularity:
+          type: string
+          enum: [week, month]
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendBucket'
+
+    CorrelationsResponse:
+      type: object
+      properties:
+        composureVsWin:
+          type: number
+          format: double
+          nullable: true
+        rushingVsWin:
+          type: number
+          format: double
+          nullable: true
+        followedFocusVsRushing:
+          type: number
+          format: double
+          nullable: true
+        longRalliesVsWin:
+          type: number
+          format: double
+          nullable: true

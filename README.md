@@ -34,3 +34,7 @@ Runner:
 ```bash
 go run ./cmd/migrate
 ```
+
+## OpenAPI
+
+- Spec file: `openapi/v1.yaml`
