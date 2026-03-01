@@ -13,7 +13,9 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
-      - caddy_net
+      caddy_net:
+        aliases:
+          - baseline-postgres
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U baseline -d baseline"]
       interval: 5s
@@ -27,7 +29,7 @@ services:
     restart: unless-stopped
     environment:
       PORT: "38180"
-      DATABASE_URL: postgres://baseline:baseline@postgres:5432/baseline?sslmode=disable
+      DATABASE_URL: postgres://baseline:baseline@baseline-postgres:5432/baseline?sslmode=disable
       API_TOKEN: baseline-dev-token
       DEFAULT_USER_ID: 00000000-0000-0000-0000-000000000001
       TZ: America/Sao_Paulo
@@ -49,7 +51,7 @@ services:
       - ./:/workspace
     command: ["go", "run", "./cmd/migrate"]
     environment:
-      DATABASE_URL: postgres://baseline:baseline@postgres:5432/baseline?sslmode=disable
+      DATABASE_URL: postgres://baseline:baseline@baseline-postgres:5432/baseline?sslmode=disable
       TZ: America/Sao_Paulo
     networks:
       - caddy_net
